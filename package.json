@@ -1,0 +1,13 @@
+{
+  "name": "penguverse",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["packages/*", "demo"],
+  "scripts": {
+    "dev": "bun run --cwd demo dev",
+    "dev:server": "bun run packages/server/src/cli.ts",
+    "build": "bun run --cwd packages/core build",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  }
+}

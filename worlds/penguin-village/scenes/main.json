@@ -1,0 +1,66 @@
+{
+  "name": "main",
+  "tileWidth": 32,
+  "tileHeight": 32,
+  "columns": 16,
+  "rows": 12,
+  "tiles": {
+    "ice": "tiles/ice.png",
+    "snow": "tiles/snow.png",
+    "water": "tiles/water.png"
+  },
+  "layers": [
+    [
+      ["water","water","water","water","water","water","water","water","water","water","water","water","water","water","water","water"],
+      ["water","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","water"],
+      ["water","snow","ice","ice","snow","snow","ice","ice","snow","snow","snow","ice","ice","snow","snow","water"],
+      ["water","snow","ice","ice","snow","snow","ice","ice","snow","snow","snow","ice","ice","snow","snow","water"],
+      ["water","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","water"],
+      ["water","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","water"],
+      ["water","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","water"],
+      ["water","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","water"],
+      ["water","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","ice","ice","snow","snow","water"],
+      ["water","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","ice","ice","snow","snow","water"],
+      ["water","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","snow","water"],
+      ["water","water","water","water","water","water","water","water","water","water","water","water","water","water","water","water"]
+    ]
+  ],
+  "walkable": [
+    [false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false],
+    [false,true,true,true,true,true,true,true,true,true,true,true,true,true,true,false],
+    [false,true,false,false,true,true,false,false,true,true,true,false,false,true,true,false],
+    [false,true,false,false,true,true,false,false,true,true,true,false,false,true,true,false],
+    [false,true,true,true,true,true,true,true,true,true,true,true,true,true,true,false],
+    [false,true,true,true,true,true,true,true,true,true,true,true,true,true,true,false],
+    [false,true,true,true,true,true,true,true,true,true,true,true,true,true,true,false],
+    [false,true,true,true,true,true,true,true,true,true,true,true,true,true,true,false],
+    [false,true,true,true,true,true,true,true,true,true,true,false,false,true,true,false],
+    [false,true,true,true,true,true,true,true,true,true,true,false,false,true,true,false],
+    [false,true,true,true,true,true,true,true,true,true,true,true,true,true,true,false],
+    [false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false]
+  ],
+  "locations": {
+    "igloo_1": { "x": 3, "y": 4, "label": "Igloo 1" },
+    "igloo_2": { "x": 7, "y": 4, "label": "Igloo 2" },
+    "igloo_3": { "x": 12, "y": 4, "label": "Igloo 3" },
+    "fishing_hole": { "x": 3, "y": 8, "label": "Fishing Hole" },
+    "rest_spot": { "x": 12, "y": 10, "label": "Rest Spot" },
+    "campfire": { "x": 7, "y": 7, "label": "Campfire" },
+    "center": { "x": 7, "y": 6, "label": "Center" }
+  },
+  "typedLocations": [
+    { "name": "igloo_1_desk", "x": 3, "y": 4, "type": "work" },
+    { "name": "igloo_2_desk", "x": 7, "y": 4, "type": "work" },
+    { "name": "igloo_3_desk", "x": 12, "y": 4, "type": "work" },
+    { "name": "rest_1", "x": 12, "y": 10, "type": "rest" },
+    { "name": "rest_2", "x": 13, "y": 10, "type": "rest" },
+    { "name": "campfire_spot", "x": 7, "y": 7, "type": "social" },
+    { "name": "fishing_spot", "x": 3, "y": 8, "type": "utility" },
+    { "name": "wander_1", "x": 5, "y": 5, "type": "wander" },
+    { "name": "wander_2", "x": 10, "y": 5, "type": "wander" },
+    { "name": "wander_3", "x": 5, "y": 9, "type": "wander" },
+    { "name": "wander_4", "x": 10, "y": 9, "type": "wander" },
+    { "name": "wander_5", "x": 8, "y": 6, "type": "wander" },
+    { "name": "wander_6", "x": 3, "y": 6, "type": "wander" }
+  ]
+}

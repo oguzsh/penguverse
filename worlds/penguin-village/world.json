@@ -1,0 +1,10 @@
+{
+  "name": "penguin-village",
+  "description": "An Antarctic village for your AI penguin agents",
+  "tileSize": 32,
+  "canvasWidth": 512,
+  "canvasHeight": 384,
+  "defaultScale": 2,
+  "scenes": ["main"],
+  "defaultScene": "main"
+}

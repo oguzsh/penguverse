@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Penguverse Demo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a1628;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: 'Courier New', monospace;
+      color: #b8d4e3;
+    }
+    h1 { font-size: 20px; letter-spacing: 3px; margin-bottom: 16px; color: #7ec8e3; }
+    #world { border: 2px solid #1a3a5c; }
+    .controls { margin-top: 16px; display: flex; gap: 8px; }
+    button {
+      background: #1a3a5c;
+      color: #7ec8e3;
+      border: 1px solid #2a5a8c;
+      padding: 6px 14px;
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    button:hover { background: #2a5a8c; }
+  </style>
+</head>
+<body>
+  <h1>PENGUVERSE</h1>
+  <div id="world"></div>
+  <div class="controls">
+    <button id="addAgent">Add Penguin</button>
+    <button id="removeAgent">Remove Last</button>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
