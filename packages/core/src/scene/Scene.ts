@@ -63,13 +63,17 @@ export class Scene implements RenderLayer {
 
     const { tileWidth, tileHeight, layers } = this.config;
 
-    for (const layer of layers) {
+    for (let li = 0; li < layers.length; li++) {
+      const layer = layers[li];
       for (let row = 0; row < layer.length; row++) {
         for (let col = 0; col < layer[row].length; col++) {
           const key = layer[row][col];
           if (key === DEADSPACE) {
-            ctx.fillStyle = '#0a1628';
-            ctx.fillRect(col * tileWidth, row * tileHeight, tileWidth, tileHeight);
+            // Only fill deadspace on the bottom layer; skip on overlays
+            if (li === 0) {
+              ctx.fillStyle = '#0a1628';
+              ctx.fillRect(col * tileWidth, row * tileHeight, tileWidth, tileHeight);
+            }
             continue;
           }
 

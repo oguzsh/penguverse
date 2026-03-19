@@ -3,6 +3,8 @@ export interface AnimationDef {
   row: number;
   frames: number;
   speed: number;
+  /** Starting column offset within the row (default 0) */
+  startFrame?: number;
 }
 
 export interface SpriteSheetConfig {
@@ -57,7 +59,7 @@ export class SpriteSheet {
     if (!img) return;
 
     const { frameWidth, frameHeight } = this.config;
-    const sx = (frame % anim.frames) * frameWidth;
+    const sx = ((anim.startFrame ?? 0) + (frame % anim.frames)) * frameWidth;
     const sy = anim.row * frameHeight;
 
     ctx.drawImage(img, sx, sy, frameWidth, frameHeight, x, y, frameWidth, frameHeight);
