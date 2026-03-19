@@ -18,6 +18,7 @@ export interface PenguverseConfig {
   signal: SignalConfig;
   penguins: PenguinConfig[];
   scale?: number;
+  renderScale?: number;
   width?: number;
   height?: number;
   worldBasePath?: string;
@@ -48,11 +49,12 @@ export class Penguverse {
 
   constructor(config: PenguverseConfig) {
     this.config = config;
-    const scale = config.scale ?? 2;
+    const scale = config.scale ?? 1;
+    const renderScale = config.renderScale ?? 1;
     const width = config.width ?? 512;
     const height = config.height ?? 384;
 
-    this.renderer = new Renderer(config.container, width, height, scale);
+    this.renderer = new Renderer(config.container, width, height, scale, renderScale);
     this.scene = new Scene(config.sceneConfig ?? createDefaultSceneConfig());
     this.penguinLayer = new PenguinLayer();
     this.particles = new ParticleSystem();
@@ -69,7 +71,7 @@ export class Penguverse {
 
     // Tooltip layer: name tags above penguins
     this.renderer.addLayer({
-      order: 30,
+      order: 22,
       render: (ctx) => {
         for (const p of this.penguins) {
           if (!p.visible) continue;
@@ -136,6 +138,29 @@ export class Penguverse {
 
   async start(): Promise<void> {
     const basePath = this.config.worldBasePath ?? `worlds/${this.config.world}`;
+
+    // Load background image if available
+    if (this.config.sceneConfig?.tiles?.['background']) {
+      const bgSrc = this.config.sceneConfig.tiles['background'];
+      const isAbsolute = /^(\/|blob:|data:|https?:\/\/)/.test(bgSrc);
+      const bgUrl = isAbsolute ? bgSrc : `${basePath}/${bgSrc}`;
+      const bgImg = new Image();
+      const canvasW = this.config.width ?? 512;
+      const canvasH = this.config.height ?? 384;
+      await new Promise<void>((resolve) => {
+        bgImg.onload = () => {
+          this.renderer.addLayer({
+            order: -2,
+            render: (ctx) => {
+              ctx.drawImage(bgImg, 0, 0, canvasW, canvasH);
+            },
+          });
+          resolve();
+        };
+        bgImg.onerror = () => resolve();
+        bgImg.src = bgUrl;
+      });
+    }
 
     await this.scene.load(basePath);
 
@@ -433,11 +458,11 @@ export class Penguverse {
     }
 
     if (to === 'working' && penguin.task) {
-      this.speechBubbles.show(penguin.x + 16, penguin.y - 8, penguin.task, 4, penguin);
+      this.speechBubbles.show(penguin.x + 16, penguin.y - 24, penguin.task, 4, penguin);
     } else if (to === 'error') {
-      this.particles.emitExclamation(penguin.x + 16, penguin.y - penguin.getSittingOffset());
+      this.particles.emitExclamation(penguin.x, penguin.y, penguin);
     } else if (to === 'speaking' && penguin.task) {
-      this.speechBubbles.show(penguin.x + 16, penguin.y - 8, penguin.task, 5, penguin);
+      this.speechBubbles.show(penguin.x + 16, penguin.y - 24, penguin.task, 5, penguin);
     }
   }
 
@@ -448,17 +473,17 @@ export class Penguverse {
 
     if (penguin.state === 'sleeping' && timer > 1.5) {
       this.particleTimers.set(key, 0);
-      this.particles.emitZzz(penguin.x + 16, penguin.y);
+      this.particles.emitZzz(penguin.x, penguin.y, penguin);
     }
 
     if (penguin.state === 'thinking' && timer > 2) {
       this.particleTimers.set(key, 0);
-      this.particles.emitThought(penguin.x + 16, penguin.y);
+      this.particles.emitThought(penguin.x, penguin.y, penguin);
     }
 
     if (penguin.state === 'error' && timer > 2) {
       this.particleTimers.set(key, 0);
-      this.particles.emitExclamation(penguin.x + 16, penguin.y);
+      this.particles.emitExclamation(penguin.x, penguin.y, penguin);
     }
   }
 
@@ -521,24 +546,25 @@ function createDefaultSceneConfig(): SceneConfig {
   };
 }
 
-export function createStandardSpriteConfig(sprite: string): SpriteSheetConfig {
+export function createStandardSpriteConfig(_sprite: string): SpriteSheetConfig {
+  // Single spritesheet: penguin-spritesheet.png — 128×192, 4 cols × 4 rows (32×48 frames)
+  // Row 0: faces down, Row 1: faces up, Row 2: faces right, Row 3: faces left
   return {
     sheets: {
-      walk: `/assets/penguins/${sprite}_walk.png`,
-      actions: `/assets/penguins/${sprite}_actions.png`,
+      main: '/assets/penguins/penguin-spritesheet.png',
     },
     animations: {
-      idle_down: { sheet: 'actions', row: 3, frames: 4, speed: 0.5 },
-      idle_up: { sheet: 'actions', row: 3, frames: 4, speed: 0.5 },
-      walk_down: { sheet: 'walk', row: 0, frames: 4, speed: 0.15 },
-      walk_up: { sheet: 'walk', row: 1, frames: 4, speed: 0.15 },
-      walk_left: { sheet: 'walk', row: 2, frames: 4, speed: 0.15 },
-      walk_right: { sheet: 'walk', row: 3, frames: 4, speed: 0.15 },
-      working: { sheet: 'actions', row: 0, frames: 4, speed: 0.3 },
-      sleeping: { sheet: 'actions', row: 1, frames: 2, speed: 0.8 },
-      talking: { sheet: 'actions', row: 2, frames: 4, speed: 0.15 },
+      walk_up:    { sheet: 'main', row: 1, frames: 4, speed: 0.12 },
+      walk_down:  { sheet: 'main', row: 0, frames: 4, speed: 0.12 },
+      walk_left:  { sheet: 'main', row: 3, frames: 4, speed: 0.12 },
+      walk_right: { sheet: 'main', row: 2, frames: 4, speed: 0.12 },
+      idle_down:  { sheet: 'main', row: 0, frames: 1, speed: 1, startFrame: 1 },
+      idle_up:    { sheet: 'main', row: 1, frames: 1, speed: 1, startFrame: 1 },
+      working:    { sheet: 'main', row: 0, frames: 2, speed: 0.4 },
+      sleeping:   { sheet: 'main', row: 0, frames: 1, speed: 1 },
+      talking:    { sheet: 'main', row: 0, frames: 4, speed: 0.15 },
     },
-    frameWidth: 64,
-    frameHeight: 64,
+    frameWidth: 32,
+    frameHeight: 48,
   };
 }
