@@ -17,7 +17,11 @@
       color: #b8d4e3;
     }
     h1 { font-size: 20px; letter-spacing: 3px; margin-bottom: 16px; color: #7ec8e3; }
-    #world { border: 2px solid #1a3a5c; }
+    #world { border: 2px solid #1a3a5c; display: flex; justify-content: center; }
+    #world canvas {
+      width: min(95vw, calc((100vh - 120px) * 24 / 14)) !important;
+      height: auto !important;
+    }
     .controls { margin-top: 16px; display: flex; gap: 8px; }
     button {
       background: #1a3a5c;
