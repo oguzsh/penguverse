@@ -385,8 +385,10 @@ export class PenguverseServer {
     if (req.method === 'POST' && url.pathname.startsWith('/api/hooks/claude-code')) {
       try {
         const data = await req.json() as Record<string, unknown>;
+        const qEvent = url.searchParams.get('event');
         const qAgent = url.searchParams.get('agent');
         const qName = url.searchParams.get('name');
+        if (qEvent) data.hook_event_name = qEvent;
         if (qAgent) data.agent = qAgent;
         if (qName) data.name = qName;
         this.handleClaudeCodeHook(data);
