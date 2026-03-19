@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "workspaces": ["packages/*", "demo"],
   "scripts": {
-    "dev": "bun run --cwd demo dev",
+    "dev": "bun run --parallel dev:demo dev:server",
+    "dev:demo": "bun run --cwd demo dev",
     "dev:server": "bun run packages/server/src/cli.ts",
     "build": "bun run --cwd packages/core build",
     "test": "bun test",

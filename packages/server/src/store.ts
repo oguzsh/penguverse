@@ -1,7 +1,9 @@
+import type { AgentState } from '@penguverse/types';
+
 export interface AgentRecord {
 	agent: string;
 	name: string;
-	state: string;
+	state: AgentState | string;
 	task: string | null;
 	energy: number;
 	metadata: Record<string, unknown>;

@@ -1,15 +1,17 @@
 import { Renderer } from './renderer/Renderer';
 import { Scene } from './scene/Scene';
-import type { SceneConfig, NamedLocation } from './scene/Scene';
+import type { SceneConfig } from './scene/Scene';
 import { SpriteSheet } from './sprites/SpriteSheet';
 import type { SpriteSheetConfig } from './sprites/SpriteSheet';
-import { Penguin, PenguinLayer } from './penguins/Penguin';
-import { TileReservation } from './penguins/TileReservation';
-import type { PenguinConfig, AgentState, TypedLocation, AnchorType } from './penguins/Penguin';
+import { Penguin } from './penguins/Penguin';
+import type { PenguinConfig, TypedLocation, SignalConfig, AgentStatus } from '@penguverse/types';
 import { ParticleSystem } from './effects/Particles';
 import { SpeechBubbleSystem } from './effects/SpeechBubble';
 import { Signal } from './signal/Signal';
-import type { SignalConfig, AgentStatus } from './signal/Signal';
+import { PenguinManager } from './PenguinManager';
+import { StateTransitionHandler } from './StateTransitionHandler';
+import { EffectsController } from './EffectsController';
+import { createTooltipLayer } from './TooltipLayer';
 
 export interface PenguverseConfig {
   container: HTMLElement;
@@ -33,19 +35,16 @@ type PenguverseEvent = 'penguin:click';
 export class Penguverse {
   private renderer: Renderer;
   private scene: Scene;
-  private penguins: Penguin[] = [];
-  private penguinLayer: PenguinLayer;
-  private particles: ParticleSystem;
-  private speechBubbles: SpeechBubbleSystem;
   private signal: Signal;
   private config: PenguverseConfig;
   private eventHandlers: Map<PenguverseEvent, Set<(data: unknown) => void>> = new Map();
 
-  private particleTimers: Map<string, number> = new Map();
+  private penguinManager: PenguinManager;
+  private stateHandler: StateTransitionHandler;
+  private effects: EffectsController;
   private typedLocations: TypedLocation[] = [];
-  private reservation = new TileReservation();
-  private spawningAgents: Set<string> = new Set();
-  private autoSpawnIndex = 0;
+  private particles: ParticleSystem;
+  private speechBubbles: SpeechBubbleSystem;
 
   constructor(config: PenguverseConfig) {
     this.config = config;
@@ -56,69 +55,53 @@ export class Penguverse {
 
     this.renderer = new Renderer(config.container, width, height, scale, renderScale);
     this.scene = new Scene(config.sceneConfig ?? createDefaultSceneConfig());
-    this.penguinLayer = new PenguinLayer();
     this.particles = new ParticleSystem();
     this.speechBubbles = new SpeechBubbleSystem();
     this.signal = new Signal(config.signal);
 
+    this.penguinManager = new PenguinManager(this.scene, this.typedLocations, {
+      defaultSprites: config.defaultSprites,
+      autoSpawn: config.autoSpawn,
+      spriteSheets: config.spriteSheets,
+      worldBasePath: config.worldBasePath,
+      world: config.world,
+    });
+
+    this.effects = new EffectsController(this.particles);
+
+    this.stateHandler = new StateTransitionHandler({
+      pathfinder: this.scene.pathfinder,
+      reservation: this.penguinManager.reservation,
+      particles: this.particles,
+      speechBubbles: this.speechBubbles,
+      getTypedLocations: () => this.typedLocations,
+      getPenguins: () => this.penguinManager.penguins,
+      getPenguin: (id) => this.penguinManager.getPenguin(id),
+      getOtherHomeAnchors: (id) => this.penguinManager.getOtherHomeAnchors(id),
+      autoSpawnPenguin: (agent) => this.penguinManager.autoSpawnPenguin(agent),
+      autoSpawnEnabled: () => config.autoSpawn !== false,
+    });
+
     // Add render layers
     this.renderer.addLayer(this.scene);
-    for (const layer of this.penguinLayer.getLayers()) {
+    for (const layer of this.penguinManager.penguinLayer.getLayers()) {
       this.renderer.addLayer(layer);
     }
     this.renderer.addLayer(this.particles);
     this.renderer.addLayer(this.speechBubbles);
+    this.renderer.addLayer(createTooltipLayer(
+      () => this.penguinManager.penguins,
+      this.scene.config.tileWidth,
+    ));
 
-    // Tooltip layer: name tags above penguins
-    this.renderer.addLayer({
-      order: 22,
-      render: (ctx) => {
-        for (const p of this.penguins) {
-          if (!p.visible) continue;
-          ctx.save();
-          ctx.font = '8px monospace';
-          ctx.fillStyle = 'rgba(0,0,0,0.6)';
-          const nameWidth = ctx.measureText(p.name).width;
-          const tagX = p.x + (this.scene.config.tileWidth - nameWidth) / 2;
-          const tagY = p.y - p.spriteSheet.config.frameHeight + this.scene.config.tileHeight - 4 - p.getSittingOffset();
-          ctx.fillRect(tagX - 2, tagY - 8, nameWidth + 4, 12);
-          ctx.fillStyle = '#ffffff';
-          ctx.fillText(p.name, tagX, tagY);
-          ctx.restore();
-        }
-      },
-    });
-
-    // Signal handler
-    this.signal.onUpdate((agents) => this.handleSignalUpdate(agents));
-
-    // DM event handler: walk sender to recipient
-    this.signal.onEvent((event) => {
-      if (event.action?.type === 'message' && event.action?.to) {
-        const sender = this.penguins.find(p => p.agentId === event.agentId);
-        const recipient = this.penguins.find(p => p.agentId === event.action.to);
-        if (sender && recipient && sender !== recipient) {
-          const sPos = sender.getTilePosition();
-          const rPos = recipient.getTilePosition();
-          const offsets = [[-1, 0], [1, 0], [0, -1], [0, 1]];
-          let bestPath: { x: number; y: number }[] = [];
-          for (const [dx, dy] of offsets) {
-            const path = this.scene.pathfinder.findPath(sPos.x, sPos.y, rPos.x + dx, rPos.y + dy);
-            if (path.length > 1 && (bestPath.length === 0 || path.length < bestPath.length)) {
-              bestPath = path;
-            }
-          }
-          if (bestPath.length > 1) {
-            sender.walkTo(bestPath);
-          }
-        }
-      }
-    });
+    // Signal handlers
+    this.signal.onUpdate((agents) => this.stateHandler.handleSignalUpdate(agents));
+    this.signal.onEvent((event) => this.stateHandler.handleDmEvent(event));
 
     // Click handler
     this.renderer.canvas.addEventListener('click', (e) => this.handleClick(e));
 
-    // Update loop for penguins
+    // Update loop
     this.renderer.addLayer({
       order: -1,
       render: (_ctx, delta) => {
@@ -126,11 +109,11 @@ export class Penguverse {
         for (const [key, loc] of Object.entries(this.scene.config.locations)) {
           locations[key] = { x: loc.x, y: loc.y };
         }
-        for (const penguin of this.penguins) {
-          const otherHomes = this.getOtherHomeAnchors(penguin.agentId);
-          penguin.update(delta, this.scene.pathfinder, locations, this.typedLocations, this.reservation, otherHomes);
-          penguin.applySeparation(this.penguins, delta);
-          this.updatePenguinEffects(penguin, delta);
+        for (const penguin of this.penguinManager.penguins) {
+          const otherHomes = this.penguinManager.getOtherHomeAnchors(penguin.agentId);
+          penguin.update(delta, this.scene.pathfinder, locations, this.typedLocations, this.penguinManager.reservation, otherHomes);
+          penguin.applySeparation(this.penguinManager.penguins, delta);
+          this.effects.updatePenguinEffects(penguin, delta);
         }
       },
     });
@@ -139,7 +122,6 @@ export class Penguverse {
   async start(): Promise<void> {
     const basePath = this.config.worldBasePath ?? `worlds/${this.config.world}`;
 
-    // Load background image if available
     if (this.config.sceneConfig?.tiles?.['background']) {
       const bgSrc = this.config.sceneConfig.tiles['background'];
       const isAbsolute = /^(\/|blob:|data:|https?:\/\/)/.test(bgSrc);
@@ -151,9 +133,7 @@ export class Penguverse {
         bgImg.onload = () => {
           this.renderer.addLayer({
             order: -2,
-            render: (ctx) => {
-              ctx.drawImage(bgImg, 0, 0, canvasW, canvasH);
-            },
+            render: (ctx) => { ctx.drawImage(bgImg, 0, 0, canvasW, canvasH); },
           });
           resolve();
         };
@@ -185,71 +165,13 @@ export class Penguverse {
         if (typed) penguin.setTilePosition(typed.x, typed.y);
       }
 
-      this.penguins.push(penguin);
+      this.penguinManager.penguins.push(penguin);
     }
 
-    this.penguinLayer.setPenguins(this.penguins);
-    this.unstickPenguins();
+    this.penguinManager.penguinLayer.setPenguins(this.penguinManager.penguins);
+    this.penguinManager.unstickPenguins();
     this.signal.start();
     this.renderer.start();
-  }
-
-  private unstickPenguins() {
-    const grid = this.scene.config.walkable;
-    const rows = grid.length;
-    const cols = grid[0]?.length ?? 0;
-    const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]] as const;
-
-    const destinations = this.typedLocations
-      .filter(l => l.type === 'wander' || l.type === 'social' || l.type === 'utility')
-      .map(l => ({ x: l.x, y: l.y }));
-
-    const connectivity = (tx: number, ty: number) => {
-      let count = 0;
-      for (const [dx, dy] of dirs) {
-        const nx = tx + dx, ny = ty + dy;
-        if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && grid[ny][nx]) count++;
-      }
-      return count;
-    };
-
-    for (const penguin of this.penguins) {
-      const tile = penguin.getTilePosition();
-
-      const canReachAny = destinations.some(d =>
-        this.scene.pathfinder.findPath(tile.x, tile.y, d.x, d.y).length > 1
-      );
-      if (canReachAny) continue;
-
-      const visited = new Set<string>();
-      const queue: { x: number; y: number }[] = [{ x: tile.x, y: tile.y }];
-      visited.add(`${tile.x},${tile.y}`);
-      let found = false;
-
-      while (queue.length > 0) {
-        const cur = queue.shift()!;
-        for (const [dx, dy] of dirs) {
-          const nx = cur.x + dx, ny = cur.y + dy;
-          const key = `${nx},${ny}`;
-          if (nx < 0 || nx >= cols || ny < 0 || ny >= rows) continue;
-          if (visited.has(key)) continue;
-          visited.add(key);
-
-          if (grid[ny][nx] && connectivity(nx, ny) >= 2) {
-            const reachable = destinations.some(d =>
-              this.scene.pathfinder.findPath(nx, ny, d.x, d.y).length > 1
-            );
-            if (reachable) {
-              penguin.setTilePosition(nx, ny);
-              found = true;
-              break;
-            }
-          }
-          queue.push({ x: nx, y: ny });
-        }
-        if (found) break;
-      }
-    }
   }
 
   stop() {
@@ -257,9 +179,7 @@ export class Penguverse {
     this.signal.stop();
   }
 
-  getCanvas(): HTMLCanvasElement {
-    return this.renderer.canvas;
-  }
+  getCanvas(): HTMLCanvasElement { return this.renderer.canvas; }
 
   on(event: PenguverseEvent, handler: (data: unknown) => void) {
     if (!this.eventHandlers.has(event)) {
@@ -281,216 +201,25 @@ export class Penguverse {
 
   setTypedLocations(locations: TypedLocation[]) {
     this.typedLocations = locations;
+    this.penguinManager.setTypedLocations(locations);
   }
 
-  getReservation(): TileReservation {
-    return this.reservation;
-  }
-
-  getPenguin(agentId: string): Penguin | undefined {
-    return this.penguins.find(p => p.agentId === agentId);
-  }
-
-  getPenguins(): Penguin[] {
-    return [...this.penguins];
-  }
-
-  getBasePath(): string {
-    return this.config.worldBasePath ?? `worlds/${this.config.world}`;
-  }
+  getReservation() { return this.penguinManager.reservation; }
+  getPenguin(agentId: string) { return this.penguinManager.getPenguin(agentId); }
+  getPenguins(): Penguin[] { return [...this.penguinManager.penguins]; }
+  getBasePath(): string { return this.config.worldBasePath ?? `worlds/${this.config.world}`; }
 
   async addPenguin(config: PenguinConfig, sheetConfig?: SpriteSheetConfig): Promise<Penguin> {
-    const sc = sheetConfig ?? createStandardSpriteConfig(config.sprite);
-    const sheet = new SpriteSheet(sc);
-    const basePath = this.getBasePath();
-    await sheet.load(basePath);
-
-    const penguin = new Penguin(
-      config,
-      sheet,
-      this.scene.config.tileWidth,
-      this.scene.config.tileHeight,
-    );
-
-    const loc = this.scene.getLocation(config.position);
-    if (loc) {
-      penguin.setTilePosition(loc.x, loc.y);
-    } else {
-      const typed = this.typedLocations.find(l => l.name === config.position);
-      if (typed) penguin.setTilePosition(typed.x, typed.y);
-    }
-
-    this.penguins.push(penguin);
-    this.penguinLayer.setPenguins(this.penguins);
-    this.unstickPenguins();
-    return penguin;
+    return this.penguinManager.addPenguin(config, sheetConfig);
   }
 
   removePenguin(agentId: string) {
-    const idx = this.penguins.findIndex(p => p.agentId === agentId);
-    if (idx < 0) return;
-    this.reservation.release(agentId);
-    this.penguins.splice(idx, 1);
-    this.penguinLayer.setPenguins(this.penguins);
-  }
-
-  private lastTransitionTime: Map<string, number> = new Map();
-  private static readonly TRANSITION_DEBOUNCE_MS = 8000;
-
-  private handleSignalUpdate(agents: AgentStatus[]) {
-    for (const agent of agents) {
-      const penguin = this.penguins.find(p => p.agentId === agent.id);
-      if (!penguin) {
-        if (this.config.autoSpawn !== false
-          && agent.state !== 'offline'
-          && !this.spawningAgents.has(agent.id)) {
-          this.autoSpawnPenguin(agent);
-        }
-        continue;
-      }
-
-      if (penguin.isNpc) continue;
-
-      const prevState = penguin.state;
-      penguin.updateState(agent.state, agent.task, agent.energy);
-
-      if (prevState !== agent.state) {
-        const now = Date.now();
-        const lastTransition = this.lastTransitionTime.get(penguin.agentId) ?? 0;
-        const elapsed = now - lastTransition;
-
-        const shouldTransition =
-          elapsed >= Penguverse.TRANSITION_DEBOUNCE_MS
-          || agent.state === 'working'
-          || agent.state === 'offline'
-          || prevState === 'offline'
-          || !penguin.isMoving();
-
-        if (shouldTransition) {
-          this.handleStateTransition(penguin, prevState, agent.state);
-          this.lastTransitionTime.set(penguin.agentId, now);
-        }
-      }
-    }
-  }
-
-  private autoSpawnPenguin(agent: AgentStatus) {
-    const sprites = this.config.defaultSprites ?? ['penguin'];
-    const sprite = sprites[this.autoSpawnIndex % sprites.length];
-    this.autoSpawnIndex++;
-
-    const wanderPoints = this.typedLocations.filter(l => l.type === 'wander');
-    const shuffled = [...wanderPoints].sort(() => Math.random() - 0.5);
-    let spawnLoc: TypedLocation | null = shuffled.find(l => this.reservation.isAvailable(l.x, l.y, agent.id))
-      ?? shuffled[0] ?? null;
-
-    if (!spawnLoc && this.typedLocations.length > 0) {
-      const anyShuffled = [...this.typedLocations].sort(() => Math.random() - 0.5);
-      spawnLoc = anyShuffled.find(l => this.reservation.isAvailable(l.x, l.y, agent.id)) ?? null;
-    }
-
-    let spawnPosition: string;
-    if (spawnLoc) {
-      spawnPosition = spawnLoc.name;
-      this.reservation.reserve(spawnLoc.x, spawnLoc.y, agent.id);
-    } else {
-      const walkable = this.scene.pathfinder.getWalkableTiles();
-      let tile: { x: number; y: number } | undefined;
-      if (walkable.length > 0) {
-        const step = Math.max(1, Math.floor(walkable.length / 8));
-        const startIdx = (this.autoSpawnIndex * step) % walkable.length;
-        for (let i = 0; i < walkable.length; i++) {
-          const idx = (startIdx + i) % walkable.length;
-          const candidate = walkable[idx];
-          if (this.reservation.isAvailable(candidate.x, candidate.y, agent.id)) {
-            tile = candidate;
-            break;
-          }
-        }
-        tile = tile ?? walkable[startIdx];
-      }
-      if (tile) {
-        spawnPosition = `_spawn_${tile.x}_${tile.y}`;
-        this.scene.config.locations[spawnPosition] = { x: tile.x, y: tile.y, label: spawnPosition };
-        this.reservation.reserve(tile.x, tile.y, agent.id);
-      } else {
-        spawnPosition = 'center';
-      }
-    }
-
-    this.spawningAgents.add(agent.id);
-    this.addPenguin({ agentId: agent.id, name: agent.name, sprite, position: spawnPosition })
-      .then((penguin) => {
-        penguin.updateState(agent.state, agent.task, agent.energy);
-      })
-      .catch(() => { /* sprite load failed */ })
-      .finally(() => { this.spawningAgents.delete(agent.id); });
-  }
-
-  private getOtherHomeAnchors(excludeAgentId: string): Set<string> {
-    const homes = new Set<string>();
-    for (const p of this.penguins) {
-      if (p.agentId !== excludeAgentId) {
-        homes.add(p.getHomePosition());
-      }
-    }
-    return homes;
-  }
-
-  private handleStateTransition(penguin: Penguin, from: AgentState, to: AgentState) {
-    const otherHomes = this.getOtherHomeAnchors(penguin.agentId);
-
-    if (this.typedLocations.length > 0) {
-      if (to === 'working') {
-        const home = penguin.getHomePosition();
-        if (!penguin.goToAnchor(home, this.typedLocations, this.scene.pathfinder, this.reservation)) {
-          penguin.goToAnchorType('work', this.typedLocations, this.scene.pathfinder, this.reservation, otherHomes);
-        }
-      } else if (to === 'sleeping') {
-        penguin.goToAnchorType('rest', this.typedLocations, this.scene.pathfinder, this.reservation, otherHomes);
-      } else if (to === 'speaking') {
-        if (!penguin.isMoving()) {
-          penguin.goToAnchorType('social', this.typedLocations, this.scene.pathfinder, this.reservation, otherHomes);
-        }
-      } else if (to === 'thinking') {
-        penguin.goToAnchorType('utility', this.typedLocations, this.scene.pathfinder, this.reservation, otherHomes);
-      }
-    }
-
-    if (to === 'working' && penguin.task) {
-      this.speechBubbles.show(penguin.x + 16, penguin.y - 24, penguin.task, 4, penguin);
-    } else if (to === 'error') {
-      this.particles.emitExclamation(penguin.x, penguin.y, penguin);
-    } else if (to === 'speaking' && penguin.task) {
-      this.speechBubbles.show(penguin.x + 16, penguin.y - 24, penguin.task, 5, penguin);
-    }
-  }
-
-  private updatePenguinEffects(penguin: Penguin, delta: number) {
-    const key = penguin.agentId;
-    const timer = (this.particleTimers.get(key) ?? 0) + delta;
-    this.particleTimers.set(key, timer);
-
-    if (penguin.state === 'sleeping' && timer > 1.5) {
-      this.particleTimers.set(key, 0);
-      this.particles.emitZzz(penguin.x, penguin.y, penguin);
-    }
-
-    if (penguin.state === 'thinking' && timer > 2) {
-      this.particleTimers.set(key, 0);
-      this.particles.emitThought(penguin.x, penguin.y, penguin);
-    }
-
-    if (penguin.state === 'error' && timer > 2) {
-      this.particleTimers.set(key, 0);
-      this.particles.emitExclamation(penguin.x, penguin.y, penguin);
-    }
+    this.penguinManager.removePenguin(agentId);
   }
 
   private handleClick(e: MouseEvent) {
     const world = this.renderer.screenToWorld(e.offsetX, e.offsetY);
-
-    for (const penguin of this.penguins) {
+    for (const penguin of this.penguinManager.penguins) {
       if (penguin.containsPoint(world.x, world.y)) {
         this.emit('penguin:click', {
           agentId: penguin.agentId,
@@ -547,8 +276,6 @@ function createDefaultSceneConfig(): SceneConfig {
 }
 
 export function createStandardSpriteConfig(_sprite: string): SpriteSheetConfig {
-  // Single spritesheet: penguin-spritesheet.png — 128×192, 4 cols × 4 rows (32×48 frames)
-  // Row 0: faces down, Row 1: faces up, Row 2: faces right, Row 3: faces left
   return {
     sheets: {
       main: '/assets/penguins/penguin-spritesheet.png',
