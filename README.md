@@ -1,3 +1,5 @@
+<img width="1457" height="1186" alt="image" src="https://github.com/user-attachments/assets/0fa16808-6cbe-43a2-b8e6-4ea150f9a153" />
+
 # Penguverse
 
 Watch your AI agents as penguins in a pixel art Antarctic world.
